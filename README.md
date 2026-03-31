@@ -86,6 +86,10 @@ Do you love Python, Bash optimizations, frontend styling, or AI engineering? **W
 
 Feel free to open an Issue if you have a bug report or a feature request. Let's build the ultimate AI sidekick together!
 
+## 📬 Contact
+
+Reach out to me at ashisdvpandey@gmail.com / ashisdvpandey@proton.me
+
 ---
 
 <p align="center">

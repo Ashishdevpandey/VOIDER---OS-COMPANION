@@ -12,9 +12,9 @@
 
 ### 🎥 Watch the Demo
 
-https://github.com/Ashishdevpandey/VOIDER---OS-COMPANION/raw/main/Screencast_20260401_113805.webm
+<video src="demo.mp4" width="100%" controls autoplay loop></video>
 
-*If the video above doesn't load, [click here to watch the demo](https://github.com/Ashishdevpandey/VOIDER---OS-COMPANION/raw/main/Screencast_20260401_113805.webm).*
+*If the video player doesn't load, [click here to view the demo](https://github.com/Ashishdevpandey/VOIDER---OS-COMPANION/blob/main/demo.mp4?raw=true).*
 
 ---
 

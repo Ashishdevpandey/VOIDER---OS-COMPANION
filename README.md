@@ -50,7 +50,7 @@ curl -sSL https://raw.githubusercontent.com/yourusername/voider/main/install.sh 
 ```
 *(If you have cloned the repo, simply run `./install.sh` followed by `./start.sh`)*
 
-### Windows (.exe)
+### Windows (.exe) File will be uploaded Later.
 Download the latest `voider-setup.exe` from the [Releases](https://github.com/yourusername/voider/releases) page and run the installer.
 Alternatively, via PowerShell:
 ```powershell

@@ -12,9 +12,7 @@
 
 ### 🎥 Watch the Demo
 
-<video src="demo.mp4" width="100%" controls autoplay loop></video>
-
-*If the video player doesn't load, [click here to view the demo](https://github.com/Ashishdevpandey/VOIDER---OS-COMPANION/blob/main/demo.mp4?raw=true).*
+![VOIDER Live Demo](demo.gif)
 
 ---
 

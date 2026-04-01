@@ -13,6 +13,7 @@
 ### 🎥 Watch the Demo
 
 ![VOIDER Live Demo](demo.gif)
+*Note: Video quality decreased by GitHub.*
 
 ---
 

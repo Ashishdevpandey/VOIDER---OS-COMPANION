@@ -10,6 +10,12 @@
 
 **VOIDER** replaces clunky terminal operations with a sleek, unified graphical interface running natively on your system. Powered at its core by **Ollama**, **FastAPI**, and **FAISS**, it allows you to maintain full privacy with 100% local AI models while taking complete control of your desktop environment across Linux distributions, Windows, and macOS.
 
+### 🎥 Watch the Demo
+
+<video src="Screencast_20260401_113805.webm" controls="controls" style="max-width: 100%;">
+  Your browser does not support the video tag.
+</video>
+
 ---
 
 ## ✨ How It Works (Architecture Details)

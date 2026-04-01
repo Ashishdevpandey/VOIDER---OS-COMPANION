@@ -80,7 +80,9 @@ graph TD;
     API <--> RAG[📚 FAISS RAG Engine];
     RAG <--> Docs[📄 Local Filesystem];
     API <--> CMD[💻 Safe Command Executor];
-    CMD <--> OS[🐧 Linux / 🪟 Windows .exe / 🍏 macOS];
+    CMD <--> Lin[fa:fa-linux Linux]
+    CMD <--> Win[fa:fa-windows Windows .exe]
+    CMD <--> Mac[fa:fa-apple macOS]
 ```
 
 ---

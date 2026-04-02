@@ -61,8 +61,52 @@ start voider-setup.exe
 ### RPM Package (Fedora/RedHat)
 ```bash
 sudo rpm -i voider-ai-os-1.0-1.fc43.x86_64.rpm
-# Then start the app
 ./start.sh
+```
+
+### 🐳 Docker (Recommended — works on any OS)
+
+> Runs the full VOIDER stack in containers. No Python setup required!
+
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/install/)
+
+#### Option A — One-click installer script
+```bash
+git clone https://github.com/Ashishdevpandey/VOIDER---OS-COMPANION.git
+cd VOIDER---OS-COMPANION
+
+# Local Ollama (default, fully private)
+./docker-install.sh
+
+# Cloud provider (e.g., Groq — blazing fast, free tier)
+./docker-install.sh --provider groq --api-key gsk_YOUR_KEY
+
+# OpenAI / Gemini / xAI
+./docker-install.sh --provider openai --api-key sk-YOUR_KEY
+./docker-install.sh --provider gemini --api-key AI_YOUR_KEY
+```
+
+Then open **http://localhost:8000/ui** 🎉
+
+#### Option B — Manual Docker Compose
+```bash
+# 1. Copy and configure
+cp .env.example .env
+# Edit .env: set VOIDER_PROVIDER and VOIDER_API_KEY
+
+# 2. Build & start
+docker compose up -d --build
+
+# 3. View logs
+docker logs -f voider
+```
+
+#### Useful commands
+```bash
+docker compose down          # Stop all containers
+docker compose restart voider # Restart just VOIDER
+docker logs -f voider        # Follow logs
+docker exec -it voider bash  # Shell into container
 ```
 
 ---

@@ -48,10 +48,12 @@ vector_store/
 *.faiss
 *.pkl
 
-# Environment
+# Environment (never commit secrets)
 .env
 .env.local
 .env.*.local
+# Keep the template
+!.env.example
 
 # Testing
 .pytest_cache/

@@ -1,0 +1,65 @@
+# VOIDER - Docker Ignore
+
+# Version control
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Logs & runtime artifacts
+*.log
+logs/
+out.log
+server.log
+server_debug.log
+gif_out.log
+
+# Data (generated at runtime)
+data/
+vector_store/
+
+# Dev tools
+.vscode/
+.idea/
+*.swp
+*.swo
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+*.rpm
+
+# Media/Demo assets (not needed in container)
+*.gif
+*.mp4
+*.webm
+Screencast_*.webm
+demo_*.mp4
+demo.gif
+1775041785.png
+Gemini_Generated_Image_*.png
+
+# Temp files
+*.tmp
+tmp/
+temp/
+contribution_test.txt
+
+# Docker files themselves (avoid recursive)
+docker-compose*.yml

@@ -1,80 +1,84 @@
-# AI OS - Local AI Assistant
-# Multi-stage Dockerfile for production deployment
+# ============================================================
+# VOIDER — AI OS Companion
+# Multi-stage Dockerfile for lean, production-ready images
+# ============================================================
 
-# Stage 1: Builder
-FROM python:3.10-slim as builder
+# ─── Stage 1: Builder ───────────────────────────────────────
+FROM python:3.10-slim AS builder
 
 WORKDIR /build
 
-# Install build dependencies
+# System build deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
-
-# Create virtual environment and install dependencies
+# Create venv
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python packages
+# Install deps first (separate layer for caching)
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Runtime
-FROM python:3.10-slim
+# ─── Stage 2: Runtime ───────────────────────────────────────
+FROM python:3.10-slim AS runtime
 
-LABEL maintainer="AI OS Team"
-LABEL description="Local AI Assistant with RAG for Linux"
-LABEL version="1.0.0"
+LABEL maintainer="Ashish Dev Pandey <ashisdvpandey@gmail.com>"
+LABEL org.opencontainers.image.title="VOIDER AI OS"
+LABEL org.opencontainers.image.description="Privacy-focused intelligent OS companion with RAG & multi-provider LLM support"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.url="https://github.com/Ashishdevpandey/VOIDER---OS-COMPANION"
 
-# Install runtime dependencies
+# Runtime system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m -u 1000 aios && \
-    mkdir -p /app/data /app/logs && \
-    chown -R aios:aios /app
+# Non-root user for security
+RUN useradd -m -u 1000 voider && \
+    mkdir -p /app/data/vector_store /app/logs /app/config && \
+    chown -R voider:voider /app
 
-# Copy virtual environment from builder
+# Copy venv from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Set working directory
 WORKDIR /app
 
 # Copy application code
-COPY --chown=aios:aios backend/ ./backend/
-COPY --chown=aios:aios cli/ ./cli/
-COPY --chown=aios:aios ui/ ./ui/
-COPY --chown=aios:aios config/ ./config/
-COPY --chown=aios:aios requirements.txt .
+COPY --chown=voider:voider backend/ ./backend/
+COPY --chown=voider:voider ui/     ./ui/
+COPY --chown=voider:voider config/ ./config/
+COPY --chown=voider:voider requirements.txt .
 
-# Create necessary directories
-RUN mkdir -p data/vector_store logs
-
-# Switch to non-root user
-USER aios
-
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Environment variables
+# ─── Environment defaults ───────────────────────────────────
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV AIOS_HOST=0.0.0.0
 ENV AIOS_PORT=8000
 
-# Entry point
-ENTRYPOINT ["uvicorn", "backend.main:app"]
-CMD ["--host", "0.0.0.0", "--port", "8000"]
+# LLM Provider — override with docker-compose env or -e flags
+# Options: ollama | groq | openai | gemini | xai
+ENV VOIDER_PROVIDER=ollama
+ENV VOIDER_OLLAMA_HOST=http://ollama:11434
+ENV VOIDER_MODEL=""
+ENV VOIDER_API_KEY=""
+
+# ─── Entrypoint ─────────────────────────────────────────────
+COPY --chown=voider:voider docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+USER voider
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+    CMD curl -sf http://localhost:8000/health | grep -q '"status"' || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

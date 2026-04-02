@@ -1,77 +1,114 @@
-# AI OS - Docker Compose Configuration
-# Local AI Assistant with Ollama and RAG
+# ================================================================
+# VOIDER — Docker Compose
+# One-command deployment for the VOIDER AI OS Companion
+#
+# Quick start:
+#   docker compose up -d            # Ollama (local) mode
+#   VOIDER_PROVIDER=groq VOIDER_API_KEY=gsk_xxx docker compose up -d
+# ================================================================
 
-version: '3.8'
+name: voider
 
 services:
-  # AI OS API Server
-  api:
+
+  # ── VOIDER API + UI ─────────────────────────────────────────
+  voider:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: ai-os-api
+    image: voider-ai-os:latest
+    container_name: voider
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${VOIDER_PORT:-8000}:8000"
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./config:/app/config:ro
+      - voider-data:/app/data
+      - voider-logs:/app/logs
+      - ./config:/app/config   # live config edits without rebuild
     environment:
-      - PYTHONPATH=/app
+      # ── LLM Provider (ollama | groq | openai | gemini | xai) ──
+      - VOIDER_PROVIDER=${VOIDER_PROVIDER:-ollama}
+      - VOIDER_MODEL=${VOIDER_MODEL:-}
+      - VOIDER_API_KEY=${VOIDER_API_KEY:-}
+      - VOIDER_OLLAMA_HOST=http://ollama:11434
+      # ── Server ───────────────────────────────────────────────
+      - AIOS_HOST=0.0.0.0
+      - AIOS_PORT=8000
       - PYTHONUNBUFFERED=1
-      - OLLAMA_HOST=http://ollama:11434
+      - PYTHONPATH=/app
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
     networks:
-      - ai-os-network
+      - voider-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
-  # Ollama LLM Server
+  # ── Ollama (local LLM) ──────────────────────────────────────
+  # Set VOIDER_PROVIDER=groq/openai/etc. to skip using Ollama
   ollama:
     image: ollama/ollama:latest
-    container_name: ai-os-ollama
+    container_name: voider-ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
-      - ollama-data:/root/.ollama
+      - ollama-models:/root/.ollama
     environment:
       - OLLAMA_ORIGINS=*
+    profiles:
+      - ollama       # only started when --profile ollama or by default
+      - default
     networks:
-      - ai-os-network
-    # Pull default model on first start
+      - voider-net
+    # Pull default model automatically on first boot
     entrypoint: >
       sh -c "
         ollama serve &
-        sleep 5
-        ollama pull llama3.2 || true
+        sleep 8
+        echo '📦 Pulling llama3.2 (first-run only)...'
+        ollama pull ${OLLAMA_MODEL:-llama3.2} || true
         wait
       "
 
-  # Optional: Vector Database (for external DB)
-  # chroma:
-  #   image: chromadb/chroma:latest
-  #   container_name: ai-os-chroma
+  # ── Ollama GPU variant (optional) ───────────────────────────
+  # Uncomment and run: docker compose --profile gpu up -d
+  # ollama-gpu:
+  #   image: ollama/ollama:latest
+  #   container_name: voider-ollama-gpu
   #   restart: unless-stopped
   #   ports:
-  #     - "8001:8000"
+  #     - "11434:11434"
   #   volumes:
-  #     - chroma-data:/chroma/chroma
+  #     - ollama-models:/root/.ollama
+  #   environment:
+  #     - OLLAMA_ORIGINS=*
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   profiles:
+  #     - gpu
   #   networks:
-  #     - ai-os-network
+  #     - voider-net
 
+# ── Volumes ─────────────────────────────────────────────────
 volumes:
-  ollama-data:
+  voider-data:
     driver: local
-  # chroma-data:
-  #   driver: local
+  voider-logs:
+    driver: local
+  ollama-models:
+    driver: local
 
+# ── Networks ────────────────────────────────────────────────
 networks:
-  ai-os-network:
+  voider-net:
     driver: bridge

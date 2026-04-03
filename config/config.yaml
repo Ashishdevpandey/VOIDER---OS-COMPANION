@@ -15,9 +15,10 @@ server:
 
 # LLM Configuration
 llm:
-  provider: "ollama"
-  model: "llama3.2"
-  base_url: "http://localhost:11434"
+  provider: "groq"
+  model: "llama-3.3-70b-versatile" # Defaulting back to the most compatible model
+  api_key: "" # Add your key via the UI or export GROQ_API_KEY=gsk_...
+  base_url: "https://api.groq.com/openai/v1"
   temperature: 0.7
   max_tokens: 2048
   timeout: 60

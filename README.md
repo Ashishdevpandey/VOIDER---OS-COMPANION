@@ -50,6 +50,13 @@ curl -sSL https://raw.githubusercontent.com/yourusername/voider/main/install.sh 
 ```
 *(If you have cloned the repo, simply run `./install.sh` followed by `./start.sh`)*
 
+> [!TIP]
+> Do you have a low-spec system and prefer to use a Cloud API (like Groq, OpenAI) instead of running local LLMs? 
+> You can bypass the native Ollama requirement entirely by starting the application with:
+> ```bash
+> ./start.sh --no-ollama
+> ```
+
 ### Windows (.exe) File will be uploaded Later.
 Download the latest `voider-setup.exe` from the [Releases](https://github.com/yourusername/voider/releases) page and run the installer.
 Alternatively, via PowerShell:

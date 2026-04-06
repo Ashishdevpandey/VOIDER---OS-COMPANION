@@ -7,6 +7,8 @@ import hashlib
 import logging
 import os
 import pickle
+import threading
+import concurrent.futures
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import time
@@ -93,6 +95,7 @@ class RAGEngine:
         # Document store
         self._documents: Dict[int, Document] = {}
         self._next_id = 0
+        self._lock = threading.Lock()
         
         # FAISS index
         self._index: Optional[faiss.Index] = None
@@ -231,10 +234,11 @@ class RAGEngine:
         chunks = self._chunk_document(content, file_path)
         
         # Add chunks to index
-        for doc in chunks:
-            doc_id = self._next_id
-            self._documents[doc_id] = doc
-            self._next_id += 1
+        with self._lock:
+            for doc in chunks:
+                doc_id = self._next_id
+                self._documents[doc_id] = doc
+                self._next_id += 1
         
         logger.info(f"Indexed {file_path}: {len(chunks)} chunks")
         return len(chunks)
@@ -290,14 +294,17 @@ class RAGEngine:
         total_chunks = 0
         errors = []
         
-        for file_path in files:
-            try:
-                chunks = self.index_file(str(file_path))
-                total_chunks += chunks
-            except Exception as e:
-                error_msg = f"Error indexing {file_path}: {str(e)}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_file = {executor.submit(self.index_file, str(path)): path for path in files}
+            for future in concurrent.futures.as_completed(future_to_file):
+                file_path = future_to_file[future]
+                try:
+                    chunks = future.result()
+                    total_chunks += chunks
+                except Exception as e:
+                    error_msg = f"Error indexing {file_path}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
         
         # Build index
         self._build_index()
@@ -320,27 +327,42 @@ class RAGEngine:
             logger.warning("No documents to index")
             return
         
-        # Get embedding dimension from first document
-        sample_doc = list(self._documents.values())[0]
-        sample_embedding = self._get_embedding(sample_doc.content)
-        self._embedding_dim = len(sample_embedding)
+        # Batch compute embeddings for documents that don't have them yet
+        docs_to_embed = [doc for doc in self._documents.values() if getattr(doc, 'embedding', None) is None]
         
-        # Create FAISS index
+        if docs_to_embed:
+            logger.info(f"Computing embeddings for {len(docs_to_embed)} documents in batches...")
+            texts = [doc.content for doc in docs_to_embed]
+            
+            # Use sentence-transformers batch encoding
+            batch_embeddings = self.embedding_model.encode(
+                texts, 
+                batch_size=32, 
+                convert_to_numpy=True,
+                show_progress_bar=False
+            )
+            
+            # Assign generated embeddings back to documents
+            for doc, emb in zip(docs_to_embed, batch_embeddings):
+                doc.embedding = emb.astype(np.float32)
+                
+        # Determine embedding dimension
+        if self._embedding_dim is None:
+            sample_doc = list(self._documents.values())[0]
+            self._embedding_dim = len(sample_doc.embedding)
+            
+        # Recreate FAISS index completely (since IndexFlatIP doesn't allow easy incremental adds if normalized incorrectly)
         self._index = faiss.IndexFlatIP(self._embedding_dim)  # Inner product for cosine similarity
         
         # Add all documents
-        embeddings = []
-        for doc_id, doc in self._documents.items():
-            embedding = self._get_embedding(doc.content)
-            doc.embedding = embedding
-            embeddings.append(embedding)
+        embeddings = [doc.embedding for doc in self._documents.values()]
         
         if embeddings:
             embeddings_array = np.array(embeddings)
             # Normalize for cosine similarity
             faiss.normalize_L2(embeddings_array)
             self._index.add(embeddings_array)
-        
+            
         logger.info(f"Built FAISS index with {len(embeddings)} vectors")
     
     def search(self, request: SearchRequest) -> List[SearchResult]:

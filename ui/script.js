@@ -13,6 +13,8 @@ let isGenerating = false;
 let isListening = false;
 let currentSpeech = null;
 let recognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
 
 // DOM Elements
 const elements = {
@@ -78,7 +80,22 @@ const elements = {
     
     // Toast
     toastContainer: document.getElementById('toast-container'),
+    
+    // Voice & Visualizer
+    visualizer: document.getElementById('audio-visualizer'),
+    visualizerContainer: document.querySelector('.audio-visualizer-container'),
+    sttModelSize: document.getElementById('stt-model-size'),
+    autoSendVoice: document.getElementById('auto-send-voice'),
+    ttsVoice: document.getElementById('tts-voice'),
+    autoPlayVoice: document.getElementById('auto-play-voice'),
+    ttsPlayer: document.getElementById('tts-player'),
 };
+
+// Visualizer state
+let audioCtx = null;
+let analyser = null;
+let dataArray = null;
+let animationId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -114,6 +131,18 @@ function loadSettings() {
         const savedOs = localStorage.getItem('targetOs') || 'Linux';
         elements.osSelect.value = savedOs;
     }
+    
+    const savedSttModel = localStorage.getItem('sttModelSize') || 'base.en';
+    elements.sttModelSize.value = savedSttModel;
+    
+    const savedAutoSend = localStorage.getItem('autoSendVoice') === 'true';
+    elements.autoSendVoice.checked = savedAutoSend;
+
+    const savedTtsVoice = localStorage.getItem('ttsVoice') || 'en-US-AnaNeural';
+    elements.ttsVoice.value = savedTtsVoice;
+
+    const savedAutoPlay = localStorage.getItem('autoPlayVoice') === 'true';
+    elements.autoPlayVoice.checked = savedAutoPlay;
 }
 
 function saveSettings() {
@@ -123,6 +152,10 @@ function saveSettings() {
     if (elements.osSelect) {
         localStorage.setItem('targetOs', elements.osSelect.value);
     }
+    localStorage.setItem('sttModelSize', elements.sttModelSize.value);
+    localStorage.setItem('autoSendVoice', elements.autoSendVoice.checked);
+    localStorage.setItem('ttsVoice', elements.ttsVoice.value);
+    localStorage.setItem('autoPlayVoice', elements.autoPlayVoice.checked);
 }
 
 function applyFontSize(size) {
@@ -198,6 +231,10 @@ function setupEventListeners() {
     if (elements.osSelect) {
         elements.osSelect.addEventListener('change', saveSettings);
     }
+    elements.sttModelSize.addEventListener('change', saveSettings);
+    elements.autoSendVoice.addEventListener('change', saveSettings);
+    elements.ttsVoice.addEventListener('change', saveSettings);
+    elements.autoPlayVoice.addEventListener('change', saveSettings);
     
     // Modal
     elements.cancelCmd.addEventListener('click', closeModal);
@@ -376,6 +413,12 @@ function addMessage(content, role, isError = false) {
     elements.messages.appendChild(messageDiv);
     scrollToBottom();
     
+    // Auto-play if enabled
+    if (role === 'system' && !isError && elements.autoPlayVoice.checked) {
+        const speakBtn = messageDiv.querySelector('.btn-speak');
+        if (speakBtn) speakText(speakBtn);
+    }
+    
     return messageDiv;
 }
 
@@ -444,16 +487,14 @@ function autoResize() {
 // ============================================================
 // TEXT-TO-SPEECH (TTS) - Read AI responses aloud
 // ============================================================
-function speakText(buttonEl) {
-    // If currently speaking this same message, stop it
-    if (currentSpeech && window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel();
-        currentSpeech = null;
-        // Reset all speak buttons
-        document.querySelectorAll('.btn-speak').forEach(btn => {
-            btn.innerHTML = '<i class="fas fa-volume-up"></i>';
-            btn.classList.remove('speaking');
-        });
+async function speakText(buttonEl) {
+    const player = elements.ttsPlayer;
+    
+    // If currently playing, stop it
+    if (!player.paused) {
+        player.pause();
+        player.src = '';
+        resetSpeakButtons();
         return;
     }
     
@@ -461,122 +502,200 @@ function speakText(buttonEl) {
     const messageDiv = buttonEl.closest('.message');
     const contentDiv = messageDiv.querySelector('.message-content');
     
-    // Extract plain text (strip HTML tags and code blocks)
+    // Extract plain text
     let rawText = contentDiv.innerText || contentDiv.textContent || '';
-    
-    // Clean up for natural reading (remove excessive whitespace)
-    rawText = rawText.replace(/```[\s\S]*?```/g, ' [code block] ')
+    rawText = rawText.replace(/```[\s\S]*?```/g, ' [code] ')
                      .replace(/\s+/g, ' ')
                      .trim();
     
     if (!rawText) return;
     
-    const utterance = new SpeechSynthesisUtterance(rawText);
-    utterance.rate = 0.95;   // Slightly slower for clarity
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+    // UI feedback: loading
+    buttonEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    buttonEl.classList.add('speaking');
     
-    // Prefer a natural sounding voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v => v.lang.startsWith('en') && !v.name.includes('espeak'));
-    if (preferred) utterance.voice = preferred;
+    const voice = elements.ttsVoice.value;
+    const url = `${API_URL}/tts/generate?text=${encodeURIComponent(rawText)}&voice=${voice}`;
     
-    utterance.onstart = () => {
+    try {
+        player.src = url;
+        await player.play();
+        
         buttonEl.innerHTML = '<i class="fas fa-stop-circle"></i>';
-        buttonEl.classList.add('speaking');
         buttonEl.title = 'Stop reading';
-    };
-    
-    utterance.onend = () => {
-        buttonEl.innerHTML = '<i class="fas fa-volume-up"></i>';
-        buttonEl.classList.remove('speaking');
-        buttonEl.title = 'Read aloud';
-        currentSpeech = null;
-    };
-    
-    utterance.onerror = () => {
-        buttonEl.innerHTML = '<i class="fas fa-volume-up"></i>';
-        buttonEl.classList.remove('speaking');
-        currentSpeech = null;
-    };
-    
-    currentSpeech = utterance;
-    window.speechSynthesis.speak(utterance);
+        
+        player.onended = () => {
+            resetSpeakButtons();
+        };
+    } catch (err) {
+        console.error('TTS playback error:', err);
+        showToast('Error playing AI voice.', 'error');
+        resetSpeakButtons();
+    }
+}
+
+function resetSpeakButtons() {
+    const player = elements.ttsPlayer;
+    player.pause();
+    document.querySelectorAll('.btn-speak').forEach(btn => {
+        btn.innerHTML = '<i class="fas fa-volume-up"></i>';
+        btn.classList.remove('speaking');
+        btn.title = 'Read aloud';
+    });
 }
 
 // ============================================================
 // SPEECH-TO-TEXT (STT) - Dictate messages with microphone
 // ============================================================
-function toggleSpeechRecognition() {
+async function toggleSpeechRecognition() {
     if (isListening) {
-        // Stop listening
-        if (recognition) recognition.stop();
+        stopRecording();
         return;
     }
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-        showToast('Speech recognition is not supported in this browser. Try Chrome or Chromium.', 'warning');
-        return;
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        startRecording(stream);
+    } catch (err) {
+        console.error('Microphone access error:', err);
+        showToast('Could not access microphone. Please check permissions.', 'error');
     }
+}
+
+function startRecording(stream) {
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
     
-    recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.continuous = false;
-    recognition.interimResults = true;
+    setupVisualizer(stream);
+    
+    mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        await transcribeAudio(audioBlob);
+        
+        // Stop all tracks to release the microphone
+        stream.getTracks().forEach(track => track.stop());
+        stopVisualizer();
+    };
+
+    mediaRecorder.start();
+    isListening = true;
     
     const micBtn = elements.micBtn;
-    const input = elements.messageInput;
+    micBtn.classList.add('listening');
+    micBtn.innerHTML = '<i class="fas fa-stop"></i>';
+    micBtn.title = 'Recording... Click to stop';
+    elements.messageInput.placeholder = '🎤 Recording... Speak now';
+    elements.visualizerContainer.classList.add('active');
     
-    recognition.onstart = () => {
-        isListening = true;
-        micBtn.classList.add('listening');
-        micBtn.innerHTML = '<i class="fas fa-stop"></i>';
-        micBtn.title = 'Listening... Click to stop';
-        input.placeholder = '🎤 Listening...';
-    };
+    showToast('Recording started...', 'info');
+}
+
+function setupVisualizer(stream) {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
     
-    recognition.onresult = (event) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    
+    const bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    
+    drawVisualizer();
+}
+
+function drawVisualizer() {
+    animationId = requestAnimationFrame(drawVisualizer);
+    
+    analyser.getByteFrequencyData(dataArray);
+    
+    const canvas = elements.visualizer;
+    const canvasCtx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    canvasCtx.clearRect(0, 0, width, height);
+    
+    const barWidth = (width / dataArray.length) * 2.5;
+    let x = 0;
+    
+    for (let i = 0; i < dataArray.length; i++) {
+        const barHeight = (dataArray[i] / 255) * height;
         
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-                finalTranscript += transcript;
-            } else {
-                interimTranscript += transcript;
-            }
-        }
+        const r = 255 * (i / dataArray.length);
+        const g = 126;
+        const b = 179; // Match accent color
         
-        // Show interim in textarea (greyed out effect via placeholder)
-        if (interimTranscript) {
-            input.value = finalTranscript + interimTranscript;
-        }
-        if (finalTranscript) {
-            input.value = finalTranscript;
+        canvasCtx.fillStyle = `rgb(${r},${g},${b})`;
+        canvasCtx.fillRect(x, height - barHeight, barWidth, barHeight);
+        
+        x += barWidth + 1;
+    }
+}
+
+function stopVisualizer() {
+    if (animationId) {
+        cancelAnimationFrame(animationId);
+    }
+    elements.visualizerContainer.classList.remove('active');
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    stopListening();
+}
+
+async function transcribeAudio(blob) {
+    const micBtn = elements.micBtn;
+    micBtn.classList.remove('listening');
+    micBtn.classList.add('processing');
+    micBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    micBtn.title = 'Transcribing...';
+    elements.messageInput.placeholder = '⚙️ Transcribing your voice...';
+
+    const modelSize = elements.sttModelSize.value;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', blob, 'recording.wav');
+
+        const response = await fetch(`${API_URL}/stt/transcribe?model_size=${modelSize}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error('Transcription failed');
+
+        const data = await response.json();
+        if (data.text && data.text.trim()) {
+            elements.messageInput.value = data.text;
             autoResize();
+            showToast(`Transcribed using ${data.provider}`, 'success');
+            
+            // Auto-send if enabled
+            if (elements.autoSendVoice.checked) {
+                sendMessage();
+            }
+        } else {
+            showToast('Could not understand audio. Try again?', 'warning');
         }
-    };
-    
-    recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error !== 'aborted') {
-            showToast(`Mic error: ${event.error}`, 'error');
-        }
-        stopListening();
-    };
-    
-    recognition.onend = () => {
-        stopListening();
-        // Auto-send if we captured something
-        if (input.value.trim()) {
-            showToast('Voice captured! Press Enter or click Send.', 'info');
-        }
-    };
-    
-    recognition.start();
+    } catch (err) {
+        console.error('Transcription error:', err);
+        showToast('Error transcribing audio.', 'error');
+    } finally {
+        micBtn.classList.remove('processing');
+        micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+        micBtn.title = 'Click to speak (Speech to Text)';
+        elements.messageInput.placeholder = 'Type your message or click 🎤 to speak... (Shift+Enter for new line)';
+    }
 }
 
 function stopListening() {

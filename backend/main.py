@@ -6,15 +6,16 @@ Main API server for the Local AI Assistant
 import logging
 import os
 import uuid
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 import json
 from fastapi.staticfiles import StaticFiles
 
@@ -33,11 +34,14 @@ from backend.models import (
     SafetyCheckResponse,
     SearchRequest,
     SearchResponse,
+    STTResponse,
 )
 from backend.llm_client import get_llm_client, LLMClient, DEFAULT_RAG_PROMPT, get_providers_info, PROVIDERS
 from backend.command_executor import get_command_executor, CommandExecutor
 from backend.rag_engine import get_rag_engine, RAGEngine
 from backend.safety import get_safety_checker
+from backend.stt_service import get_stt_service
+from backend.tts_service import get_tts_service
 
 # Setup logging
 logging.basicConfig(
@@ -109,6 +113,9 @@ async def lifespan(app: FastAPI):
             chunk_overlap=rag_config.get("chunk_overlap", 50),
             vector_store_path=rag_config.get("vector_store_path", "./data/vector_store"),
         )
+        # Load embedding model in background thread so server starts immediately
+        rag_engine.preload_model_async()
+        logger.info("RAG embedding model loading in background...")
     
     logger.info("AI OS server started successfully")
     
@@ -540,6 +547,83 @@ async def clear_rag_index():
     
     rag_engine.clear_index()
     return {"message": "RAG index cleared"}
+
+
+@app.post("/stt/transcribe", response_model=STTResponse)
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    model_size: str = "tiny.en"
+):
+    """Transcribe uploaded audio file"""
+    if not llm_client:
+        raise HTTPException(status_code=503, detail="LLM client not initialized")
+    
+    # Get configuration from current LLM provider
+    provider = llm_client.provider
+    api_key = llm_client.api_key
+    
+    # Force 'local' transcription if it's Ollama or Gemini (unless we want to support Gemini STT later)
+    stt_provider = "local"
+    if provider in ["groq", "openai"]:
+        stt_provider = provider
+        
+    stt_service = get_stt_service(provider=stt_provider, api_key=api_key, model_size=model_size)
+    
+    # Save temporary file
+    try:
+        suffix = Path(file.filename).suffix or ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+            
+        start_time = datetime.now()
+        text = stt_service.transcribe(tmp_path)
+        duration = (datetime.now() - start_time).total_seconds()
+        
+        # Clean up
+        os.unlink(tmp_path)
+        
+        return STTResponse(
+            text=text,
+            provider=stt_provider,
+            duration_seconds=duration
+        )
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/tts/voices")
+async def get_voices():
+    """List available high-quality neural voices"""
+    tts_service = get_tts_service()
+    voices = await tts_service.get_voices()
+    return voices
+
+
+@app.get("/tts/generate")
+async def generate_tts(
+    text: str, 
+    voice: Optional[str] = None, 
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    """Generate TTS audio and return as a file stream"""
+    tts_service = get_tts_service()
+    try:
+        audio_path = await tts_service.generate_audio(text, voice)
+        
+        # Ensure the temp file is deleted after the response is sent
+        background_tasks.add_task(os.unlink, audio_path)
+        
+        return FileResponse(
+            audio_path, 
+            media_type="audio/mpeg", 
+            filename="speech.mp3"
+        )
+    except Exception as e:
+        logger.error(f"TTS generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/provider/current")

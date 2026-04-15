@@ -111,6 +111,9 @@
                                 <span>Use RAG</span>
                             </label>
                         </div>
+                        <div class="audio-visualizer-container">
+                            <canvas id="audio-visualizer"></canvas>
+                        </div>
                         <div class="input-wrapper">
                             <textarea id="message-input"
                                 placeholder="Type your message or click 🎤 to speak... (Shift+Enter for new line)"
@@ -305,6 +308,41 @@
                             </select>
                         </div>
                     </div>
+                    
+                    <div class="settings-section">
+                        <h3>Voice & Accessibility</h3>
+                        <div class="setting-item">
+                            <label>STT Model Size</label>
+                            <select id="stt-model-size">
+                                <option value="tiny.en">Tiny (Fastest)</option>
+                                <option value="base.en" selected>Base (Balanced)</option>
+                                <option value="small.en">Small (Accurate)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label class="checkbox-label" style="justify-content: space-between; width: 100%;">
+                                <span>Auto-Send after Speaking</span>
+                                <input type="checkbox" id="auto-send-voice">
+                                <span class="checkmark"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>TTS Voice (Person)</label>
+                            <select id="tts-voice">
+                                <option value="en-US-AnaNeural">Cute Girl (Ana)</option>
+                                <option value="en-US-JennyNeural">Natural (Jenny)</option>
+                                <option value="en-US-AvaNeural">Friendly (Ava)</option>
+                                <option value="en-GB-SoniaNeural">British (Sonia)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label class="checkbox-label" style="justify-content: space-between; width: 100%;">
+                                <span>Auto-Play AI Voice</span>
+                                <input type="checkbox" id="auto-play-voice">
+                                <span class="checkmark"></span>
+                            </label>
+                        </div>
+                    </div>
 
                     <div class="settings-section">
                         <h3>About</h3>
@@ -441,6 +479,7 @@
     </div>
 
     <script src="script.js"></script>
+    <audio id="tts-player" style="display: none;"></audio>
 </body>
 
 </html>

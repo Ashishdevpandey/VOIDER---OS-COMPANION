@@ -83,6 +83,8 @@ class RAGEngine:
         
         # Initialize embedding model (lazy loading)
         self._embedding_model: Optional[SentenceTransformer] = None
+        self._model_ready = threading.Event()  # Signals when embedding model is loaded
+        self._model_load_error: Optional[str] = None
         
         # Initialize text splitter
         self._text_splitter = RecursiveCharacterTextSplitter(
@@ -103,15 +105,45 @@ class RAGEngine:
         
         logger.info(f"RAG engine initialized with model: {embedding_model}")
     
+    def preload_model_async(self):
+        """Start loading the embedding model in a background thread so it doesn't block startup"""
+        def _load():
+            try:
+                logger.info(f"[Background] Loading embedding model: {self.embedding_model_name}")
+                self._embedding_model = SentenceTransformer(
+                    self.embedding_model_name,
+                    device=self.device,
+                )
+                logger.info(f"[Background] Embedding model loaded successfully")
+            except Exception as e:
+                self._model_load_error = str(e)
+                logger.error(f"[Background] Failed to load embedding model: {e}")
+            finally:
+                self._model_ready.set()
+        
+        thread = threading.Thread(target=_load, daemon=True, name="embedding-model-loader")
+        thread.start()
+        return thread
+    
     @property
     def embedding_model(self) -> SentenceTransformer:
-        """Lazy load embedding model"""
+        """Lazy load embedding model, waiting for background load if in progress"""
         if self._embedding_model is None:
-            logger.info(f"Loading embedding model: {self.embedding_model_name}")
-            self._embedding_model = SentenceTransformer(
-                self.embedding_model_name,
-                device=self.device,
-            )
+            if not self._model_ready.is_set():
+                logger.info("Waiting for embedding model to finish loading...")
+                self._model_ready.wait(timeout=120)  # Wait up to 2 min
+            
+            if self._model_load_error:
+                raise RuntimeError(f"Embedding model failed to load: {self._model_load_error}")
+            
+            # Fallback: if model still not loaded (no background thread was started), load synchronously
+            if self._embedding_model is None:
+                logger.info(f"Loading embedding model synchronously: {self.embedding_model_name}")
+                self._embedding_model = SentenceTransformer(
+                    self.embedding_model_name,
+                    device=self.device,
+                )
+                self._model_ready.set()
         return self._embedding_model
     
     def _get_embedding(self, text: str) -> np.ndarray:

@@ -173,3 +173,11 @@ class ConfigResponse(BaseModel):
     safety_enabled: bool = Field(...)
     rag_enabled: bool = Field(...)
     supported_extensions: List[str] = Field(default_factory=list)
+
+
+class STTResponse(BaseModel):
+    """Speech-to-Text transcription response"""
+    text: str = Field(..., description="Transcribed text")
+    provider: str = Field(..., description="Provider used for transcription")
+    duration_seconds: float = Field(default=0.0, description="Transcription duration")
+    timestamp: datetime = Field(default_factory=datetime.now)

@@ -39,6 +39,10 @@ tenacity>=8.1.0,<9.0.0
 # Security & Safety
 escape
 
+# Audio & Speech
+faster-whisper>=1.0.0
+pydub>=0.25.1
+
 # Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0

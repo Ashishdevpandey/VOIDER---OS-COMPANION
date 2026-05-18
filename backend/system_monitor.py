@@ -32,17 +32,35 @@ class SystemMonitor:
 
     def get_system_info(self) -> Dict:
         """Collects details about hardware, operating system, and installed applications."""
+        cpu_model = "-"
+        try:
+            if os.path.exists("/proc/cpuinfo"):
+                with open("/proc/cpuinfo", "r") as f:
+                    for line in f:
+                        if "model name" in line:
+                            parts = line.split(":", 1)
+                            if len(parts) > 1:
+                                cpu_model = parts[1].strip()
+                                break
+        except Exception as e:
+            logger.debug(f"Error reading cpu info: {e}")
+
+        if cpu_model == "-":
+            proc = platform.processor()
+            cpu_model = proc if proc else platform.machine()
+
         info = {
             "os": platform.system(),
             "release": platform.release(),
             "architecture": platform.machine(),
             "node": platform.node(),
-            "processor": platform.processor(),
+            "processor": cpu_model,
         }
         
         try:
             mem = psutil.virtual_memory()
-            info["memory"] = [f"{mem.total / (1024**3):.1f}GB", f"{mem.used / (1024**3):.1f}GB"]
+            # [Used, Total] to correctly match the frontend's Used / Total format
+            info["memory"] = [f"{mem.used / (1024**3):.1f}GB", f"{mem.total / (1024**3):.1f}GB"]
         except Exception as e:
             logger.debug(f"Memory read error: {e}")
             

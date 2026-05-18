@@ -273,22 +273,30 @@ class SystemExecutor:
 
     def check_for_updates(self) -> str:
         """Checks for available system updates."""
+        # 1. Try checkupdates if available
         try:
-            updates = subprocess.check_output("checkupdates", shell=True).decode().strip()
-            if not updates:
+            result = subprocess.run(["checkupdates"], capture_output=True, text=True)
+            if result.returncode == 0:
+                count = len(result.stdout.strip().splitlines())
+                return f"There are {count} updates available."
+            elif result.returncode == 2:
                 return "Your system is fully up to date."
-            count = len(updates.splitlines())
-            return f"There are {count} updates available for your system."
-        except subprocess.CalledProcessError as e:
-            if e.returncode == 2: # No updates found
-                return "Your system is up to date."
-            # Fallback
-            try:
-                updates = subprocess.check_output("pacman -Qu", shell=True).decode().strip()
-                count = len(updates.splitlines())
+        except Exception:
+            pass
+
+        # 2. Try pacman -Qu
+        try:
+            result = subprocess.run(["pacman", "-Qu"], capture_output=True, text=True)
+            if result.returncode == 0:
+                count = len(result.stdout.strip().splitlines())
                 return f"There are {count} updates pending."
-            except:
+            elif result.returncode == 1:
+                return "Your system is fully up to date."
+            else:
                 return "I couldn't check for updates at the moment."
+        except Exception as e:
+            logger.debug(f"Error checking pacman updates: {e}")
+            return "I couldn't check for updates at the moment."
 
     def get_active_windows(self) -> List[Dict]:
         """Gets currently open window clients from Hyprland."""

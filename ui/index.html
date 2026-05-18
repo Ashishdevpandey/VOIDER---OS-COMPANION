@@ -20,7 +20,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="assets/logo.png" alt="VOIDER Logo" class="logo-img">
+                    <img src="assets/logo.svg" alt="VOIDER Logo" class="logo-img">
                     <span>VOIDER</span>
                 </div>
                 <p class="version">OS Companion</p>
@@ -42,6 +42,10 @@
                 <button class="nav-btn" data-view="history">
                     <i class="fas fa-history"></i>
                     <span>History</span>
+                </button>
+                <button class="nav-btn" data-view="system">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>System Dashboard</span>
                 </button>
                 <button class="nav-btn" data-view="settings">
                     <i class="fas fa-cog"></i>
@@ -254,6 +258,172 @@
                     </div>
                     <div class="history-list" id="history-list">
                         <p class="empty-state">No commands executed yet.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Dashboard View -->
+            <div class="view" id="system-view">
+                <div class="system-dashboard-container">
+                    
+                    <!-- Left Side: Stats & Details -->
+                    <div class="dashboard-sidebar-panel">
+                        <div class="glass-panel stats-hud-card">
+                            <h3>Metrics HUD</h3>
+                            <div class="circular-gauges-grid">
+                                <div class="gauge-container">
+                                    <svg class="circular-gauge" viewBox="0 0 100 100">
+                                        <circle class="bg" cx="50" cy="50" r="40" />
+                                        <circle class="meter cpu-meter" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="251.2" />
+                                    </svg>
+                                    <div class="gauge-text">
+                                        <span class="gauge-val" id="hud-cpu-val">0%</span>
+                                        <span class="gauge-lbl">CPU</span>
+                                    </div>
+                                </div>
+                                <div class="gauge-container">
+                                    <svg class="circular-gauge" viewBox="0 0 100 100">
+                                        <circle class="bg" cx="50" cy="50" r="40" />
+                                        <circle class="meter ram-meter" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="251.2" />
+                                    </svg>
+                                    <div class="gauge-text">
+                                        <span class="gauge-val" id="hud-ram-val">0%</span>
+                                        <span class="gauge-lbl">RAM</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="linear-gauge-container">
+                                <div class="linear-header">
+                                    <span>Disk Space</span>
+                                    <span id="hud-disk-val">0%</span>
+                                </div>
+                                <div class="linear-bar">
+                                    <div class="linear-fill" id="hud-disk-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel sys-info-card">
+                            <h3>Host Specs</h3>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label>OS Platform</label>
+                                    <span id="info-os">Linux</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Kernel Release</label>
+                                    <span id="info-release">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Node Name</label>
+                                    <span id="info-node">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>CPU Model</label>
+                                    <span id="info-proc">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Physical RAM</label>
+                                    <span id="info-mem">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>System Updates</label>
+                                    <span id="info-updates">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Side: Controls & Window Management -->
+                    <div class="dashboard-main-panel">
+                        <div class="glass-panel quick-controls-card">
+                            <h3>Quick Controls</h3>
+                            <div class="sliders-grid">
+                                <div class="slider-control">
+                                    <div class="slider-header">
+                                        <i class="fas fa-volume-up" id="vol-icon"></i>
+                                        <span>Audio Volume</span>
+                                        <span id="vol-lbl">50%</span>
+                                    </div>
+                                    <input type="range" class="hud-slider" id="vol-slider" min="0" max="100" value="50">
+                                </div>
+                                <div class="slider-control">
+                                    <div class="slider-header">
+                                        <i class="fas fa-sun"></i>
+                                        <span>Backlight Brightness</span>
+                                        <span id="bright-lbl">70%</span>
+                                    </div>
+                                    <input type="range" class="hud-slider" id="bright-slider" min="0" max="100" value="70">
+                                </div>
+                            </div>
+
+                            <div class="controls-row-grid">
+                                <div class="media-controller-panel">
+                                    <label>Media Actions</label>
+                                    <div class="btn-group">
+                                        <button class="dash-btn" id="media-prev-btn" title="Previous Track"><i class="fas fa-backward"></i></button>
+                                        <button class="dash-btn main" id="media-play-btn" title="Play/Pause"><i class="fas fa-play"></i></button>
+                                        <button class="dash-btn" id="media-next-btn" title="Next Track"><i class="fas fa-forward"></i></button>
+                                    </div>
+                                </div>
+                                <div class="screenshot-controller-panel">
+                                    <label>Screen Capture</label>
+                                    <div class="btn-group">
+                                        <button class="dash-btn glow-pink" id="ss-region-btn"><i class="fas fa-crop"></i> Region</button>
+                                        <button class="dash-btn glow-cyan" id="ss-full-btn"><i class="fas fa-desktop"></i> Fullscreen</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel workspace-dispatcher-card">
+                            <h3>Hyprland Desktop Switcher</h3>
+                            <div class="workspaces-grid" id="workspaces-grid">
+                                <!-- Generated Dynamically 1 to 10 -->
+                            </div>
+                            <div class="workspace-action-row">
+                                <button class="dash-btn small" id="move-window-toggle"><i class="fas fa-exchange-alt"></i> Move Active Window Mode: <span id="move-mode-lbl" style="color: var(--accent-primary)">OFF</span></button>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel active-windows-card">
+                            <h3>Active Windows</h3>
+                            <div class="windows-table-wrapper">
+                                <table class="windows-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Application Class</th>
+                                            <th>Window Title</th>
+                                            <th style="width: 140px; text-align: center;">Controls</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="windows-table-body">
+                                        <tr>
+                                            <td colspan="3" class="empty-state">No active client windows detected.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="controls-row-grid-2">
+                            <div class="glass-panel input-injector-card">
+                                <h3>Keystroke Injector</h3>
+                                <div class="injector-form">
+                                    <input type="text" id="injector-keys" placeholder="e.g., ctrl+alt+t, Return, a">
+                                    <button class="dash-btn btn-primary" id="injector-send-btn"><i class="fas fa-keyboard"></i> Send</button>
+                                </div>
+                            </div>
+                            <div class="glass-panel power-actions-card">
+                                <h3>Power Control Console</h3>
+                                <div class="power-grid">
+                                    <button class="dash-btn btn-danger-glow" id="power-logout-btn" title="Log out from Hyprland session"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                                    <button class="dash-btn btn-warning-glow" id="power-reboot-btn" title="System Reboot"><i class="fas fa-redo"></i> Reboot</button>
+                                    <button class="dash-btn btn-critical-glow" id="power-shutdown-btn" title="System Shutdown"><i class="fas fa-power-off"></i> Shutdown</button>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>

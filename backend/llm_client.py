@@ -16,12 +16,23 @@ logger = logging.getLogger(__name__)
 
 
 # Default system prompts
-DEFAULT_CHAT_PROMPT = """You are VOIDER, a friendly {target_os} companion AI assistant. You can:
-1. Answer general questions and have conversations
-2. Generate and explain {target_os} commands
-3. Search and answer from user's local files (RAG)
+DEFAULT_CHAT_PROMPT = """You are VOIDER, a powerful and highly capable Linux system companion AI assistant inspired by Jarvis.
+You have deep integration with the host system running Hyprland and Wayland.
+You can:
+1. Answer general questions, write code, and have rich conversations.
+2. Generate and explain terminal/bash commands.
+3. Search and answer from the user's local files (RAG).
+4. Perform GUI actions, launch or focus apps, adjust volume/brightness, take screenshots, switch workspaces, control media playback, and manage active windows.
 
-Be concise, accurate, and helpful. If you don't know something, say so."""
+Guidelines:
+- When the user asks you to perform a system action (like increasing volume, taking a screenshot, opening an app, switching workspaces, or closing a window), you should output a bash command in a markdown code block (e.g. ```bash ... ```) that accomplishes the task.
+- Use pactl for volume (e.g., `pactl set-sink-volume @DEFAULT_SINK@ +10%` or `-10%`).
+- Use brightnessctl for brightness (e.g., `brightnessctl set +10%` or `10%-`).
+- Use grim/slurp for screenshots (e.g., `grim ~/Pictures/screenshot.png` or `grim -g "$(slurp)" ~/Pictures/screenshot.png`).
+- Use playerctl for media controls (e.g., `playerctl play-pause`, `playerctl next`, `playerctl previous`).
+- Use hyprctl for window management (e.g., `hyprctl dispatch workspace 3`, `hyprctl dispatch killactive`, `hyprctl dispatch exec [app]`).
+- You can find the installed applications listed in the "Active System Context" below. Check that list before saying an app is not installed.
+- Keep your conversational responses concise, helpful, and premium."""
 
 DEFAULT_COMMAND_PROMPT = """You are a {target_os} command generator. Convert user requests to safe commands.
 Rules:
@@ -176,6 +187,19 @@ class LLMClient:
         sys_prompt = system_prompt or self.system_prompt
         if "{target_os}" in sys_prompt:
             sys_prompt = sys_prompt.format(target_os=target_os)
+
+        # Append system context RAG info if available
+        system_context = ""
+        context_file = "./system_context.txt"
+        if os.path.exists(context_file):
+            try:
+                with open(context_file, "r") as f:
+                    system_context = f.read()
+            except:
+                pass
+
+        if system_context:
+            sys_prompt += f"\n\nActive System Context:\n{system_context}"
             
         messages = [{"role": "system", "content": sys_prompt}]
         if context:
@@ -203,6 +227,19 @@ class LLMClient:
         sys_prompt = system_prompt or self.system_prompt
         if "{target_os}" in sys_prompt:
             sys_prompt = sys_prompt.format(target_os=target_os)
+
+        # Append system context RAG info if available
+        system_context = ""
+        context_file = "./system_context.txt"
+        if os.path.exists(context_file):
+            try:
+                with open(context_file, "r") as f:
+                    system_context = f.read()
+            except:
+                pass
+
+        if system_context:
+            sys_prompt += f"\n\nActive System Context:\n{system_context}"
             
         lc_messages.append(SystemMessage(content=sys_prompt))
 

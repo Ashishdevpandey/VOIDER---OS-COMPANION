@@ -262,6 +262,7 @@ function switchView(viewName) {
         commands: 'Command Generator',
         rag: 'RAG Search',
         history: 'Command History',
+        system: 'System Dashboard',
         settings: 'Settings',
     };
     elements.pageTitle.textContent = titles[viewName] || 'AI OS';
@@ -269,6 +270,12 @@ function switchView(viewName) {
     // Load data if needed
     if (viewName === 'history') {
         loadHistory();
+    }
+    
+    if (viewName === 'system') {
+        startSystemStatsPolling();
+    } else {
+        stopSystemStatsPolling();
     }
 }
 
@@ -1297,4 +1304,301 @@ function updateProviderBadge(provider, model) {
 document.addEventListener('DOMContentLoaded', () => {
     // Small delay to let initializeApp run first
     setTimeout(initProviderModal, 100);
+});
+
+// ============================================================
+// SYSTEM DASHBOARD - POLLED AND EVENT-DRIVEN AUTOMATION
+// ============================================================
+
+let systemStatsInterval = null;
+let moveActiveWindowMode = false;
+
+function startSystemStatsPolling() {
+    if (systemStatsInterval) return;
+    // Initial fetch
+    updateSystemDashboard();
+    // Start interval
+    systemStatsInterval = setInterval(updateSystemDashboard, 2000);
+}
+
+function stopSystemStatsPolling() {
+    if (systemStatsInterval) {
+        clearInterval(systemStatsInterval);
+        systemStatsInterval = null;
+    }
+}
+
+async function updateSystemDashboard() {
+    try {
+        // 1. Fetch Stats & System info
+        const statsRes = await fetch(`${API_URL}/api/system/stats`);
+        if (statsRes.ok) {
+            const data = await statsRes.json();
+            
+            // Circular gauges
+            const cpuMeter = document.querySelector('.cpu-meter');
+            const ramMeter = document.querySelector('.ram-meter');
+            const cpuVal = document.getElementById('hud-cpu-val');
+            const ramVal = document.getElementById('hud-ram-val');
+            const diskVal = document.getElementById('hud-disk-val');
+            const diskFill = document.getElementById('hud-disk-fill');
+
+            if (cpuMeter) {
+                const offset = 251.2 - (251.2 * data.stats.cpu) / 100;
+                cpuMeter.style.strokeDashoffset = offset;
+                cpuVal.textContent = Math.round(data.stats.cpu) + '%';
+            }
+            if (ramMeter) {
+                const offset = 251.2 - (251.2 * data.stats.ram) / 100;
+                ramMeter.style.strokeDashoffset = offset;
+                ramVal.textContent = Math.round(data.stats.ram) + '%';
+            }
+            if (diskFill) {
+                diskFill.style.width = data.stats.disk + '%';
+                diskVal.textContent = Math.round(data.stats.disk) + '%';
+            }
+
+            // Specs Card
+            document.getElementById('info-os').textContent = data.info.os || 'Linux';
+            document.getElementById('info-release').textContent = data.info.release || '-';
+            document.getElementById('info-node').textContent = data.info.node || '-';
+            document.getElementById('info-proc').textContent = data.info.processor || '-';
+            document.getElementById('info-mem').textContent = data.info.memory ? data.info.memory.join(' / ') : '-';
+            document.getElementById('info-updates').textContent = data.info.updates || 'Checking...';
+        }
+
+        // 2. Fetch Active Windows & workspaces
+        const winRes = await fetch(`${API_URL}/api/system/windows`);
+        if (winRes.ok) {
+            const data = await winRes.json();
+            
+            // Build Workspaces grid dynamically
+            let activeWorkspace = 1;
+            let workspacesWithWindows = [];
+
+            if (data.windows && data.windows.length > 0) {
+                workspacesWithWindows = [...new Set(data.windows.map(w => w.workspace.id).filter(id => id > 0))];
+                // Hyprland focused client
+                const activeWin = data.windows.find(w => w.focusHistoryID === 0);
+                if (activeWin) {
+                    activeWorkspace = activeWin.workspace.id;
+                }
+            }
+            
+            generateWorkspacesGrid(activeWorkspace, workspacesWithWindows);
+
+            // Populate Active Windows Table
+            const tbody = document.getElementById('windows-table-body');
+            if (tbody) {
+                tbody.innerHTML = '';
+                if (!data.windows || data.windows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No active client windows detected.</td></tr>';
+                } else {
+                    data.windows.forEach(win => {
+                        const tr = document.createElement('tr');
+                        
+                        // Sanitize class and title
+                        const winClass = win.class || '(unknown)';
+                        const winTitle = win.title || '(no title)';
+                        
+                        tr.innerHTML = `
+                            <td><code>${escapeHtml(winClass)}</code></td>
+                            <td>${escapeHtml(winTitle)}</td>
+                            <td class="tbl-btn-group">
+                                <button class="tbl-btn focus" onclick="triggerSystemAction('focus_window', '${winClass}')">Focus</button>
+                                <button class="tbl-btn close" onclick="triggerSystemAction('close_window')">Close</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error fetching dashboard stats:', err);
+    }
+}
+
+function generateWorkspacesGrid(activeWorkspace, workspacesWithWindows) {
+    const grid = document.getElementById('workspaces-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    
+    for (let i = 1; i <= 10; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'workspace-node';
+        if (i === activeWorkspace) btn.classList.add('active');
+        if (workspacesWithWindows.includes(i)) btn.classList.add('has-windows');
+        btn.textContent = i;
+        btn.onclick = () => handleWorkspaceClick(i);
+        grid.appendChild(btn);
+    }
+}
+
+function handleWorkspaceClick(workspaceNum) {
+    if (moveActiveWindowMode) {
+        triggerSystemAction('move_window', workspaceNum);
+        moveActiveWindowMode = false;
+        const moveModeLbl = document.getElementById('move-mode-lbl');
+        if (moveModeLbl) {
+            moveModeLbl.textContent = 'OFF';
+            moveModeLbl.style.color = 'var(--accent-primary)';
+        }
+    } else {
+        triggerSystemAction('switch_workspace', workspaceNum);
+    }
+}
+
+// System endpoints dispatcher
+async function triggerSystemAction(action, params = '') {
+    try {
+        const res = await fetch(`${API_URL}/api/system/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, params })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            if (action === 'take_screenshot') {
+                showToast(`📸 Screenshot saved: ${data.result}`, 'success');
+            } else if (action === 'move_window') {
+                showToast(`Window relocated to workspace ${params}`, 'success');
+            } else if (action === 'switch_workspace') {
+                showToast(`Switched workspace to ${params}`, 'info');
+            } else if (action === 'power_mgmt') {
+                showToast(`Power action ${params} triggered.`, 'warning');
+            }
+            updateSystemDashboard();
+            return data.result;
+        } else {
+            showToast(`System action failed: ${data.error || 'Unknown error'}`, 'error');
+        }
+    } catch (err) {
+        console.error('System action call failed:', err);
+        showToast('Error communicating with system executor.', 'error');
+    }
+}
+
+// Background adjustments that don't trigger intrusive toast notices
+async function executeSystemActionSilent(action, params = '') {
+    try {
+        await fetch(`${API_URL}/api/system/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, params })
+        });
+    } catch (err) {
+        console.error('Silent action error:', err);
+    }
+}
+
+// Wire up Dashboard Controls
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Sliders adjustment
+    const volSlider = document.getElementById('vol-slider');
+    const volLbl = document.getElementById('vol-lbl');
+    const volIcon = document.getElementById('vol-icon');
+    
+    if (volSlider) {
+        volSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            volLbl.textContent = val + '%';
+            
+            // Adjust volume icon
+            if (val == 0) {
+                volIcon.className = 'fas fa-volume-mute';
+            } else if (val < 40) {
+                volIcon.className = 'fas fa-volume-down';
+            } else {
+                volIcon.className = 'fas fa-volume-up';
+            }
+            
+            executeSystemActionSilent('set_volume', val);
+        });
+    }
+
+    const brightSlider = document.getElementById('bright-slider');
+    const brightLbl = document.getElementById('bright-lbl');
+    
+    if (brightSlider) {
+        brightSlider.addEventListener('input', (e) => {
+            brightLbl.textContent = e.target.value + '%';
+            executeSystemActionSilent('set_brightness', e.target.value);
+        });
+    }
+
+    // 2. Playback Controllers
+    const playBtn = document.getElementById('media-play-btn');
+    if (playBtn) {
+        playBtn.addEventListener('click', () => {
+            triggerSystemAction('media_control', 'play-pause');
+            // Toggle icon
+            const icon = playBtn.querySelector('i');
+            if (icon.className === 'fas fa-play') {
+                icon.className = 'fas fa-pause';
+            } else {
+                icon.className = 'fas fa-play';
+            }
+        });
+    }
+    
+    document.getElementById('media-prev-btn')?.addEventListener('click', () => {
+        triggerSystemAction('media_control', 'previous');
+    });
+    document.getElementById('media-next-btn')?.addEventListener('click', () => {
+        triggerSystemAction('media_control', 'next');
+    });
+
+    // 3. Screenshot Capture
+    document.getElementById('ss-region-btn')?.addEventListener('click', () => {
+        triggerSystemAction('take_screenshot', 'false');
+    });
+    document.getElementById('ss-full-btn')?.addEventListener('click', () => {
+        triggerSystemAction('take_screenshot', 'true');
+    });
+
+    // 4. Relocate Active Window Mode
+    document.getElementById('move-window-toggle')?.addEventListener('click', () => {
+        moveActiveWindowMode = !moveActiveWindowMode;
+        const moveModeLbl = document.getElementById('move-mode-lbl');
+        if (moveModeLbl) {
+            moveModeLbl.textContent = moveActiveWindowMode ? 'ON' : 'OFF';
+            moveModeLbl.style.color = moveActiveWindowMode ? 'var(--accent-success)' : 'var(--accent-primary)';
+        }
+    });
+
+    // 5. Keystroke injector
+    const injectorSendBtn = document.getElementById('injector-send-btn');
+    const injectorKeys = document.getElementById('injector-keys');
+    if (injectorSendBtn && injectorKeys) {
+        injectorSendBtn.addEventListener('click', () => {
+            const keys = injectorKeys.value.trim();
+            if (keys) {
+                triggerSystemAction('press_key', keys);
+                injectorKeys.value = '';
+                showToast(`Typed combination: ${keys}`, 'success');
+            }
+        });
+        injectorKeys.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') injectorSendBtn.click();
+        });
+    }
+
+    // 6. Power Console Actions
+    document.getElementById('power-logout-btn')?.addEventListener('click', () => {
+        if (confirm("Are you sure you want to end your Hyprland user session?")) {
+            triggerSystemAction('power_mgmt', 'logout');
+        }
+    });
+    document.getElementById('power-reboot-btn')?.addEventListener('click', () => {
+        if (confirm("Reboot the host system?")) {
+            triggerSystemAction('power_mgmt', 'reboot');
+        }
+    });
+    document.getElementById('power-shutdown-btn')?.addEventListener('click', () => {
+        if (confirm("Power off the host machine?")) {
+            triggerSystemAction('power_mgmt', 'shutdown');
+        }
+    });
 });

@@ -43,6 +43,8 @@ from backend.rag_engine import get_rag_engine, RAGEngine
 from backend.safety import get_safety_checker
 from backend.stt_service import get_stt_service
 from backend.tts_service import get_tts_service
+from backend.system_executor import get_system_executor, SystemExecutor
+from backend.system_monitor import get_system_monitor, SystemMonitor
 
 # Setup logging
 logging.basicConfig(
@@ -55,6 +57,8 @@ logger = logging.getLogger(__name__)
 llm_client: Optional[LLMClient] = None
 command_executor: Optional[CommandExecutor] = None
 rag_engine: Optional[RAGEngine] = None
+system_executor: Optional[SystemExecutor] = None
+system_monitor: Optional[SystemMonitor] = None
 config: Dict = {}
 
 
@@ -77,7 +81,7 @@ def load_config() -> Dict:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
-    global llm_client, command_executor, rag_engine, config
+    global llm_client, command_executor, rag_engine, system_executor, system_monitor, config
     
     # Startup
     logger.info("Starting AI OS server...")
@@ -105,6 +109,23 @@ async def lifespan(app: FastAPI):
         safety_checker=safety_checker,
         default_timeout=safety_config.get("default_timeout", 30),
     )
+
+    # Initialize System executor and monitor
+    system_executor = get_system_executor()
+    system_monitor = get_system_monitor()
+    
+    # Start periodic system context updater in background
+    async def periodic_system_context_updater():
+        while True:
+            try:
+                await asyncio.to_thread(system_monitor.update_system_context)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in background system context updater: {e}")
+            await asyncio.sleep(60)
+
+    context_task = asyncio.create_task(periodic_system_context_updater())
     
     # Core services (STT/TTS)
     stt_config = config.get("stt", {})
@@ -133,6 +154,11 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down AI OS server...")
+    context_task.cancel()
+    try:
+        await context_task
+    except asyncio.CancelledError:
+        pass
 
 
 # Create FastAPI app
@@ -722,6 +748,116 @@ async def pull_model(model: str):
             raise HTTPException(status_code=500, detail="Failed to pull model")
     except Exception as e:
         logger.error(f"Pull model error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/system/stats")
+async def get_system_stats():
+    """Get system stats (CPU, RAM, Disk) and host info"""
+    if not system_monitor:
+        raise HTTPException(status_code=503, detail="System monitor not initialized")
+    try:
+        stats = system_monitor.get_stats()
+        info = system_monitor.get_system_info()
+        updates = await asyncio.to_thread(system_executor.check_for_updates)
+        return {
+            "stats": stats,
+            "info": {
+                "os": info.get("os"),
+                "release": info.get("release"),
+                "architecture": info.get("architecture"),
+                "node": info.get("node"),
+                "processor": info.get("processor"),
+                "memory": info.get("memory", ["0GB", "0GB"]),
+                "updates": updates
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error in get_system_stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/system/apps")
+async def get_system_apps():
+    """List all installed applications"""
+    if not system_executor:
+        raise HTTPException(status_code=503, detail="System executor not initialized")
+    try:
+        apps = await asyncio.to_thread(system_executor.get_all_apps)
+        return {"apps": apps}
+    except Exception as e:
+        logger.error(f"Error in get_system_apps: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/system/windows")
+async def get_system_windows():
+    """List active Hyprland window clients"""
+    if not system_executor:
+        raise HTTPException(status_code=503, detail="System executor not initialized")
+    try:
+        windows = await asyncio.to_thread(system_executor.get_active_windows)
+        return {"windows": windows}
+    except Exception as e:
+        logger.error(f"Error in get_system_windows: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/system/action")
+async def execute_system_action(request: Dict):
+    """Execute high-level system operations (volume, brightness, media, GUI automation)"""
+    if not system_executor:
+        raise HTTPException(status_code=503, detail="System executor not initialized")
+    
+    action = request.get("action", "").strip().lower()
+    params = request.get("params", "")
+    
+    try:
+        result = ""
+        if action == "open_app":
+            result = await asyncio.to_thread(system_executor.open_app, str(params))
+        elif action == "set_volume":
+            result = await asyncio.to_thread(system_executor.set_volume, str(params))
+        elif action == "get_volume":
+            result = await asyncio.to_thread(system_executor.get_volume)
+        elif action == "set_brightness":
+            result = await asyncio.to_thread(system_executor.set_brightness, str(params))
+        elif action == "get_brightness":
+            result = await asyncio.to_thread(system_executor.get_brightness)
+        elif action == "take_screenshot":
+            full = str(params).lower() == "true"
+            result = await asyncio.to_thread(system_executor.take_screenshot, full)
+        elif action == "media_control":
+            result = await asyncio.to_thread(system_executor.media_control, str(params))
+        elif action == "switch_workspace":
+            result = await asyncio.to_thread(system_executor.switch_workspace, str(params))
+        elif action == "move_window":
+            result = await asyncio.to_thread(system_executor.move_window, str(params))
+        elif action == "focus_window":
+            result = await asyncio.to_thread(system_executor.focus_window, str(params))
+        elif action == "close_window":
+            result = await asyncio.to_thread(system_executor.close_window)
+        elif action == "type_text":
+            result = await asyncio.to_thread(system_executor.type_text, str(params))
+        elif action == "press_key":
+            result = await asyncio.to_thread(system_executor.press_key, str(params))
+        elif action == "mouse_click":
+            result = await asyncio.to_thread(system_executor.mouse_click, str(params))
+        elif action == "mouse_move":
+            x, y = map(int, str(params).split(','))
+            result = await asyncio.to_thread(system_executor.mouse_move, x, y)
+        elif action == "wait":
+            result = await asyncio.to_thread(system_executor.wait, float(params))
+        elif action == "power_mgmt":
+            result = await asyncio.to_thread(system_executor.power_mgmt, str(params))
+        elif action == "run_shell":
+            result = await asyncio.to_thread(system_executor.run_shell, str(params))
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown system action: {action}")
+            
+        return {"success": True, "result": result}
+    except Exception as e:
+        logger.error(f"Error in execute_system_action action={action}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
